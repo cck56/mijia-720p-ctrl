@@ -1,6 +1,6 @@
 
-LIB_PATH=$(HOME)/Downloads/toolchain_gnueabi-4.4.0_ARMv5TE/usr/lib
-CROSS_COMPILE=$(HOME)/Downloads/toolchain_gnueabi-4.4.0_ARMv5TE/usr/bin/arm-linux-
+LIB_PATH=/usr/src/arm-linux-3.3/toolchain_gnueabi-4.4.0_ARMv5TE/usr/lib
+CROSS_COMPILE=/usr/src/arm-linux-3.3/toolchain_gnueabi-4.4.0_ARMv5TE/usr/bin/arm-linux-
 
 CC=$(CROSS_COMPILE)gcc
 LD=$(CROSS_COMPILE)ld
