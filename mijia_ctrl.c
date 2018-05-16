@@ -21,6 +21,7 @@
 #define ISP_DEV_NAME "/dev/isp328"
 #define REPLY_WRONG_ARG_NUM "FAIL,WRONG_ARG_NUM\n"
 #define REPLY_INVALID_ARG "FAIL,INVALID_ARG\n"
+#define REPLY_INIT_FAIL "FAIL,INIT_FAIL\n"
 #define SERVER_PORT 8888
 #define BUFF_LEN 1024
 #define MAX_ARG_NUM (4)
@@ -48,23 +49,41 @@ void ircut_off(void) {
 int ircut_init(void) {
     int direction_fd;
 
-    if (access("/sys/class/gpio/gpio14", F_OK) < 0)
-        return -1;
-    if (access("/sys/class/gpio/gpio15", F_OK) < 0)
-        return -1;
+    if ((direction_fd = open("/sys/class/gpio/export", O_WRONLY)) >= 0) {
+        write(direction_fd, "14", 3);
+        write(direction_fd, "15", 3);
+        close(direction_fd);
+    }
 
-    if ((ircut_fd[0] = open("/sys/class/gpio/gpio14/value", O_RDWR)) < 0)
+    if (access("/sys/class/gpio/gpio14", F_OK) < 0) {
+        printf("Failed to access GPIO14\n");
         return -1;
-    if ((ircut_fd[1] = open("/sys/class/gpio/gpio15/value", O_RDWR)) < 0)
+    }
+    if (access("/sys/class/gpio/gpio15", F_OK) < 0) {
+        printf("Failed to access GPIO15\n");
         return -1;
+    }
 
-    if ((direction_fd = open("/sys/class/gpio/gpio14/direction", O_WRONLY)) < 0)
+    if ((ircut_fd[0] = open("/sys/class/gpio/gpio14/value", O_RDWR)) < 0) {
+        printf("Failed to open GPIO14 value for reading\n");
         return -1;
+    }
+    if ((ircut_fd[1] = open("/sys/class/gpio/gpio15/value", O_RDWR)) < 0) {
+        printf("Failed to open GPIO15 value for reading\n");
+        return -1;
+    }
+
+    if ((direction_fd = open("/sys/class/gpio/gpio14/direction", O_WRONLY)) < 0) {
+        printf("Failed to open GPIO14 direction for writing\n");
+        return -1;
+    }
     write(direction_fd, "out", 3);
     close(direction_fd);
 
-    if ((direction_fd = open("/sys/class/gpio/gpio15/direction", O_WRONLY)) < 0)
+    if ((direction_fd = open("/sys/class/gpio/gpio15/direction", O_WRONLY)) < 0) {
+        printf("Failed to open GPIO15 direction for writing\n");
         return -1;
+    }
     write(direction_fd, "out", 3);
     close(direction_fd);
 
@@ -79,6 +98,8 @@ void ir_led_set(unsigned int val) {
 }
 
 int pwm_init(void) {
+    system("modprobe ftpwmtmr010");
+
     if ((pwm_fd = open(PWM_DEV_NAME, O_RDWR)) < 0) {
         printf("pwm dev open failed\n");
         return -1;
@@ -114,6 +135,16 @@ int pwm_init(void) {
     return 0;
 }
 
+int motor_init(void) {
+    system("modprobe motor");
+
+    if ((motor_fd = open(MOTOR_DEV_NAME, O_RDWR)) < 0) {
+        printf("motor dev open failed\n");
+        return -1;
+    }
+
+    return 0;
+}
 typedef void (*cmd_func_t)(int argc, char *argv[], char *buf);
 
 typedef struct {
@@ -123,6 +154,11 @@ typedef struct {
 
 void cmd_motor(int argc, char *argv[], char *buf) {
     int vpos = 0, hpos = 0, tmp;
+
+    if ( fcntl(motor_fd, F_GETFD) == -1 ) {
+        strcpy(buf, REPLY_INIT_FAIL);
+        return;
+    }
 
     if (argc == 3) {
         sscanf(argv[1], "%d", &hpos);
@@ -149,6 +185,11 @@ void cmd_motor(int argc, char *argv[], char *buf) {
 void cmd_irled(int argc, char *argv[], char *buf) {
     unsigned int val = -1;
 
+    if ( fcntl(pwm_fd, F_GETFD) == -1 ) {
+        strcpy(buf, REPLY_INIT_FAIL);
+        return;
+    }
+
     if (argc == 2) {
         sscanf(argv[1], "%d", &val);
         printf("ir val:%d\n", val);
@@ -163,6 +204,11 @@ void cmd_irled(int argc, char *argv[], char *buf) {
 
 void cmd_ircut(int argc, char *argv[], char *buf) {
     unsigned int val = -1;
+
+    if (( fcntl(ircut_fd[0], F_GETFD) == -1 ) || ( fcntl(ircut_fd[1], F_GETFD) == -1 )) {
+        strcpy(buf, REPLY_INIT_FAIL);
+        return;
+    }
 
     if (argc == 2) {
         sscanf(argv[1], "%d", &val);
@@ -181,6 +227,11 @@ void cmd_ircut(int argc, char *argv[], char *buf) {
 
 void cmd_daynight(int argc, char *argv[], char *buf) {
     unsigned int val = -1;
+
+    if ( fcntl(isp_fd, F_GETFD) == -1 ) {
+        strcpy(buf, REPLY_INIT_FAIL);
+        return;
+    }
 
     if (argc == 2) {
         sscanf(argv[1], "%d", &val);
@@ -216,6 +267,11 @@ void cmd_ledstatus(int argc, char *argv[], char *buf) {
 void cmd_isp_sta(int argc, char *argv[], char *buf) {
     unsigned int converge = 0, ev = 0, sta_rdy = 0;
     unsigned int awb_sta[10];
+
+    if ( fcntl(isp_fd, F_GETFD) == -1 ) {
+        strcpy(buf, REPLY_INIT_FAIL);
+        return;
+    }
 
     while (converge < 4) {
         ioctl(isp_fd, _IOR(0x65, 0x23, int), &converge);
@@ -253,22 +309,22 @@ int main(int argc, char *argv[]) {
 
     if (ircut_init() < 0) {
         printf("ircut init failed\n");
-        return -1;
+    //    return -1;
     }
 
     if (pwm_init() < 0) {
         printf("pwm init failed\n");
-        return -1;
+    //    return -1;
     }
 
-    if ((motor_fd = open(MOTOR_DEV_NAME, O_RDWR)) < 0) {
-        printf("motor dev open failed\n");
-        return -1;
+    if (motor_init() < 0) {
+        printf("motor init failed\n");
+    //    return -1;
     }
 
     if ((isp_fd = open(ISP_DEV_NAME, O_RDWR)) < 0) {
         printf("isp dev open failed\n");
-        return -1;
+    //    return -1;
     }
 
     if ((sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
