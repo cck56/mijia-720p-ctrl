@@ -58,4 +58,45 @@ val: 0 = on, 1 = off, 2 = blink
 
 returns the EV and IR(g_bg_ratio) values
 
+#### GETEV
 
+```bash
+ # echo -n "GETEV" | nc -4u -q1 [camera-ip] 888
+```
+
+returns the EV value, this is handy to implement an external "automatic daynight" script, for example:
+
+```bash
+#!/bin/sh
+
+IP=$1
+
+dnfile=/tmp/DAYNIGHT
+[ ! -f $dnfile ] && echo 1 >$dnfile
+trigger=2500
+
+q() {
+        echo "${1}"|nc -w1 -4u ${IP} 8888
+}
+
+while :
+do
+        DAYNIGHT=$(cat "$dnfile")
+        eval $(q "GETEV"|grep 'EV=')
+        echo "EV=$EV - DAYNIGHT=$DAYNIGHT"
+        if [ $EV -lt $trigger ] && [ $DAYNIGHT -eq "0" ]; then
+                echo "entering night mode"
+                q "DAYNIGHT,1"
+                q "IRCUT,0"
+                q "IRLED,255"
+                echo 1 >$dnfile
+        elif [ $EV -gt $trigger ] && [ $DAYNIGHT -eq "1" ]; then
+                echo "leave night mode"
+                q "DAYNIGHT,0"
+                q "IRCUT,1"
+                q "IRLED,0"
+                echo 0 >$dnfile
+        fi
+        sleep 3
+done
+```

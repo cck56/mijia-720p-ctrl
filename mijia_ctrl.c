@@ -266,8 +266,22 @@ int cmd_ircut(int argc, char *argv[], char *buf) {
     return 0;
 }
 
+void
+get_ev(unsigned int *ev) {
+    ioctl(isp_fd, _IOR(0x65, 0x1f, int), ev);
+}
+
+int cmd_ev(int argc, char *argv[], char *buf) {
+    unsigned int ev = 0;
+
+    get_ev(&ev);
+    sprintf(buf, "EV=%d\n", ev);
+
+    return 0;
+}
+
 int cmd_daynight(int argc, char *argv[], char *buf) {
-    unsigned int val = -1;
+    unsigned int val = -1, ev = 0;
 
     if ( fcntl(isp_fd, F_GETFD) == -1 ) {
         strcpy(buf, REPLY_DEV_INIT_FAIL);
@@ -334,7 +348,7 @@ int cmd_isp_sta(int argc, char *argv[], char *buf) {
         ioctl(isp_fd, _IOR(0x65, 0x23, int), &converge);
         sleep(1);
     }
-    ioctl(isp_fd, _IOR(0x65, 0x1f, int), &ev);
+    get_ev(&ev);
 
     while (sta_rdy != 0xf) {
         ioctl(isp_fd, _IOR(0x63, 0x09, int), &sta_rdy);
@@ -354,6 +368,7 @@ cmd_list_t cmd_list[] =
     {"DAYNIGHT", cmd_daynight},
     {"LEDSTATUS", cmd_ledstatus},
     {"GETSTAT", cmd_isp_sta},
+    {"GETEV", cmd_ev},
     {NULL, NULL}
 };
 
